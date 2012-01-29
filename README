@@ -1,0 +1,1 @@
+mod_dnsblcheck is an Apache module designed to provide per-directory and per-method filtering support with one or more DNS-based Blackhole Lists 
