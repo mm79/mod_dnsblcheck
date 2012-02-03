@@ -224,7 +224,7 @@ static int dnsblcheck_query(request_rec *r, dnsblcheck_cfg *cfg)
 {
     int i;
     apr_status_t sr;
-    const char *referer = apr_table_get(r->headers_in, "Referer");
+    /* const char *referer = apr_table_get(r->headers_in, "Referer"); */
     apr_uri_t *uri = (apr_uri_t *) apr_pcalloc (r->pool, sizeof (apr_uri_t));
 
     if (r == NULL || cfg == NULL || !cfg->dnsblcheck || 
