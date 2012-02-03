@@ -1,1 +1,3 @@
-mod_dnsblcheck is an Apache module designed to provide per-directory and per-method filtering support with one or more DNS-based Blackhole Lists 
+mod_dnsblcheck allows you to set one or more dnsbl servers to check incoming 
+requests. It can be set to make a configuration for per-directory basis 
+and to limit dnsbl queries to specified methods (ex. POST requests).
