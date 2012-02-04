@@ -1,3 +1,27 @@
 mod_dnsblcheck allows you to set one or more dnsbl servers to check incoming 
 requests. It can be set to make a configuration for per-directory basis 
 and to limit dnsbl queries to specified methods (ex. POST requests).
+
+Examples
+
+Per-Directory configuration: 
+cat /etc/apache2/mods-enabled/dnsblcheck.conf 
+
+<IfModule mod_dnsblcheck.c>
+    DNSBLHosts dnsbl1.domain
+    DNSBLWhitelist 10.0.1.0/24
+    DNSBLMethods POST
+    DNSBLCheck off
+
+    <Directory /var/www/www.siteA.org>
+        DNSBLCheck on
+    </Directory>
+
+    <Directory /var/www/www.siteB.org>
+        DNSBLCheck on
+        DNSBLHosts dnsbl1.domain dnsbl2.domain 
+        DNSBLMethods POST PUT DELETE
+	DNSBLAction block
+	DNBLMessage "Blocked for SPAM"
+    </Directory>
+</IfModule>
