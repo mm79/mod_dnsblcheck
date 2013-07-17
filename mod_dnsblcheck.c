@@ -19,6 +19,8 @@
 #include <sys/socket.h>
 #include <netdb.h>
 
+#include "apr_strings.h"
+
 #include "httpd.h"
 #include "http_core.h" 
 #include "http_config.h"
@@ -179,7 +181,8 @@ static int dnsblcheck_dns(const char *ip, const char *rblhost)
     int little, herr, i, ret = 0;
     unsigned char a, b, c, d;
 
-    inet_aton(ip, &raddr);
+    if (inet_aton(ip, &raddr)  == INADDR_NONE)
+        goto done;
 
     d = (unsigned char)(raddr.s_addr >> 24) & 0xFF;
     c = (unsigned char)(raddr.s_addr >> 16) & 0xFF;
