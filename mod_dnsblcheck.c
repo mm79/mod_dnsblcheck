@@ -181,7 +181,7 @@ static int dnsblcheck_dns(const char *ip, const char *rblhost)
     int little, herr, i, ret = 0;
     unsigned char a, b, c, d;
 
-    if (inet_aton(ip, &raddr)  == INADDR_NONE)
+    if (inet_aton(ip, &raddr) == 0) 
         goto done;
 
     d = (unsigned char)(raddr.s_addr >> 24) & 0xFF;
