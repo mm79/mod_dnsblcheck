@@ -272,7 +272,7 @@ dnsblcheck_query(request_rec *r, dnsblcheck_cfg *cfg)
             }  
 
             return cfg->status;        
-	    }
+        }
 
         switch (cfg->action) {
             case DNSBL_ACTION_ENV: 
@@ -288,7 +288,7 @@ dnsblcheck_query(request_rec *r, dnsblcheck_cfg *cfg)
                         apr_pstrcat(r->pool, dnsblprefix[i], NULL);
                 }
 
-                dnsbleprefix = (dnsbleprefix) ? \ 
+                dnsbleprefix = (dnsbleprefix) ? \
                     apr_pstrcat(r->pool, dnsbleprefix, " ", dnsblprefix[i],
                         NULL) : \
                     apr_pstrcat(r->pool, dnsblprefix[i], NULL); 
