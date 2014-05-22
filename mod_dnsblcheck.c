@@ -425,7 +425,7 @@ static const command_rec dnsblcheck_cmds[] =
         ACCESS_CONF|RSRC_CONF,
         "Message to show when blocked by DNSBL"),
 
-    AP_INIT_TAKE1("DNSBLStatus", dnsblcheck_command_handler, 
+    AP_INIT_TAKE1("DNSBLHttpStatus", dnsblcheck_command_handler, 
         (void *)APR_OFFSETOF(dnsblcheck_cfg, status), 
         ACCESS_CONF|RSRC_CONF,
         "HTTP Status  when blocked by DNSBL"),
