@@ -8,20 +8,21 @@ Per-Directory configuration:
 cat /etc/apache2/mods-enabled/dnsblcheck.conf 
 
 <IfModule mod_dnsblcheck.c>
-    DNSBLHosts dnsbl1.domain
+    DNSBLPrefix dnsbl1.domain
     DNSBLWhitelist 10.0.1.0/24
-    DNSBLMethods POST
-    DNSBLCheck off
+    DNSBLTestMethods POST
+    DNSBLEngine off
 
     <Directory /var/www/mysiteA>
-        DNSBLCheck on
+        DNSBLEngine on
     </Directory>
 
     <Directory /var/www/mysiteB>
-        DNSBLCheck on
-        DNSBLHosts dnsbl1.domain dnsbl2.domain 
-        DNSBLMethods POST PUT DELETE
-	DNSBLAction block
-	DNBLMessage "Blocked for SPAM"
+        DNSBLEngine on
+        DNSBLPrefix dnsbl1.domain dnsbl2.domain 
+        DNSBLTestMethods POST PUT DELETE
+    	DNSBLAction block
+    	DNBLMessage "Blocked for SPAM"
+        DNSBLHttpStatus 403
     </Directory>
 </IfModule>
