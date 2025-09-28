@@ -181,28 +181,63 @@ dnsblcheck_whitelist(request_rec *r, apr_array_header_t *a, int method)
 }
 
 static int
+reverse_ipv6(const char *ipv6, char *output, size_t output_size)
+{
+    struct in6_addr addr6;
+
+    if (inet_pton(AF_INET6, ipv6, &addr6) != 1)
+        return -1;
+
+    char *ptr = output;
+    size_t remaining = output_size;
+
+    for (int i = 15; i >= 0; i--) {
+        int written = snprintf(ptr, remaining, "%x.%x.", addr6.s6_addr[i] & 0x0F, (addr6.s6_addr[i] >> 4) & 0x0F);
+        if (written < 0 || written >= remaining) {
+            return -1;
+        }
+        ptr += written;
+        remaining -= written;
+    }
+
+    return 0;
+}
+
+static int
 dnsblcheck_dns(const char *ip, const char *prefix)
 {
-    char query[128];
-    struct in_addr raddr;
+    char query[1024];
     struct addrinfo *hres = NULL, *p;
-    int little, herr, i, ret = 0;
-    unsigned char a, b, c, d;
+    int herr, ret = 0;
+    int little = little_chiricahua();
 
-    if (inet_aton(ip, &raddr) == 0)
-        goto done;
 
-    d = (unsigned char)(raddr.s_addr >> 24) & 0xFF;
-    c = (unsigned char)(raddr.s_addr >> 16) & 0xFF;
-    b = (unsigned char)(raddr.s_addr >> 8) & 0xFF;
-    a = (unsigned char)raddr.s_addr & 0xFF;
+    struct in_addr raddr;
+    if (inet_aton(ip, &raddr)) {
+        unsigned char a, b, c, d;
+        d = (unsigned char)(raddr.s_addr >> 24) & 0xFF;
+        c = (unsigned char)(raddr.s_addr >> 16) & 0xFF;
+        b = (unsigned char)(raddr.s_addr >> 8) & 0xFF;
+        a = (unsigned char)raddr.s_addr & 0xFF;
 
-    if ((little = little_chiricahua()))
-        snprintf(query, sizeof(query), "%d.%d.%d.%d.%s",
-                 d, c, b, a, prefix);
-    else
-        snprintf(query, sizeof(query), "%d.%d.%d.%d.%s",
-                 a, b, c, d, prefix);
+        if (little)
+            snprintf(query, sizeof(query), "%d.%d.%d.%d.%s",
+                     d, c, b, a, prefix);
+        else
+            snprintf(query, sizeof(query), "%d.%d.%d.%d.%s",
+                     a, b, c, d, prefix);
+
+    }
+    else if (strchr(ip, ':')) {
+        char reversed[1024];
+        if (reverse_ipv6(ip, reversed, sizeof(reversed)) != 0)
+            return 0;
+
+        snprintf(query, sizeof(query), "%s%s", reversed, prefix);
+    }
+    else {
+        return 0;
+    }
 
     if ((herr = getaddrinfo(query, NULL, NULL, &hres)) != 0) {
         ret = 0;
@@ -210,18 +245,15 @@ dnsblcheck_dns(const char *ip, const char *prefix)
     }
 
     for (p = hres; p != NULL; p = p->ai_next) {
-        if (p->ai_family != PF_INET)
-            continue;
+        if (p->ai_family == PF_INET) {
+            struct sockaddr_in *sin = (struct sockaddr_in *)p->ai_addr;
+            unsigned char a = (unsigned char)
+                              (sin->sin_addr.s_addr >> ((little) ? 0 : 24)) & 0xff;
 
-        struct sockaddr_in *sin = (struct sockaddr_in *)
-                                  p->ai_addr;
-
-        a = (unsigned char)
-            (sin->sin_addr.s_addr >> ((little) ? 0 : 24)) & 0xff;
-
-        if (a == 0x7f) {
-            ret = 1;
-            break;
+            if (a == 127) {
+                ret = 1;
+                break;
+            }
         }
     }
 
@@ -241,8 +273,7 @@ dnsblcheck_query(request_rec *r, dnsblcheck_cfg *cfg)
     /* const char *referer = apr_table_get(r->headers_in, "Referer"); */
     apr_uri_t *uri = (apr_uri_t *) apr_pcalloc (r->pool, sizeof (apr_uri_t));
 
-    if (r == NULL || cfg == NULL || !cfg->dnsblcheck ||
-            strchr(r->connection->client_ip, ':'))
+    if (r == NULL || cfg == NULL || !cfg->dnsblcheck)
         return DECLINED;
 
     if (cfg->methods != 0 &&
@@ -307,9 +338,7 @@ dnsblcheck_query(request_rec *r, dnsblcheck_cfg *cfg)
             }
 
             break;
-            /* ... other actions coming in future ... */
         }
-
     }
 
     return OK;
@@ -464,19 +493,19 @@ static int dnsblcheck_access_ex(request_rec *r)
 static void register_hooks(apr_pool_t *p)
 {
     ap_hook_check_access_ex(dnsblcheck_access_ex,
-                            NULL,            
-                            NULL,            
-                            APR_HOOK_MIDDLE, 
+                            NULL,
+                            NULL,
+                            APR_HOOK_MIDDLE,
                             AP_AUTH_INTERNAL_PER_CONF);
 }
 
 module AP_MODULE_DECLARE_DATA dnsblcheck_module=
 {
-STANDARD20_MODULE_STUFF,
-dnsblcheck_dir_config,      /* dir config creater */
-dnsblcheck_merge_config,    /* dir merger --- default is to override */
-NULL,                       /* server config */
-NULL,                       /* merge server configs */
-dnsblcheck_cmds,            /* command apr_table_t */
-register_hooks              /* register hooks */
+    STANDARD20_MODULE_STUFF,
+    dnsblcheck_dir_config,      /* dir config creater */
+    dnsblcheck_merge_config,    /* dir merger --- default is to override */
+    NULL,                       /* server config */
+    NULL,                       /* merge server configs */
+    dnsblcheck_cmds,            /* command apr_table_t */
+    register_hooks              /* register hooks */
 };
