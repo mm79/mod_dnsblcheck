@@ -204,15 +204,8 @@ dnsblcheck_dns(const char *ip, const char *prefix)
 
     struct in_addr raddr;
     if (inet_aton(ip, &raddr)) {
-        unsigned char a, b, c, d;
-        d = (unsigned char)(raddr.s_addr >> 24) & 0xFF;
-        c = (unsigned char)(raddr.s_addr >> 16) & 0xFF;
-        b = (unsigned char)(raddr.s_addr >> 8) & 0xFF;
-        a = (unsigned char)raddr.s_addr & 0xFF;
-
-        snprintf(query, sizeof(query), "%d.%d.%d.%d.%s",
-                 d, c, b, a, prefix);
-
+        unsigned char *bytes = (unsigned char *)&raddr.s_addr;
+        snprintf(query, sizeof(query), "%u.%u.%u.%u.%s", bytes[3], bytes[2], bytes[1], bytes[0], prefix);
     }
     else if (strchr(ip, ':')) {
         char reversed[1024];
