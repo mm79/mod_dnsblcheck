@@ -198,22 +198,22 @@ reverse_ipv6(const char *ipv6, char *output, size_t output_size)
 static int
 dnsblcheck_dns(const char *ip, const char *prefix)
 {
-    char query[1024];
+    char query[253];
     struct addrinfo *hres = NULL, *p;
     int herr, ret = 0;
 
     struct in_addr raddr;
     if (inet_aton(ip, &raddr)) {
-        uint32_t ip_addr = ntohl(raddr.s_addr);
-        unsigned char b1 = (ip_addr >> 24) & 0xFF;
-        unsigned char b2 = (ip_addr >> 16) & 0xFF;
-        unsigned char b3 = (ip_addr >> 8) & 0xFF;
-        unsigned char b4 = ip_addr & 0xFF;
+        unsigned char d = (raddr.s_addr >> 24) & 0xFF;
+        unsigned char c = (raddr.s_addr >> 16) & 0xFF;
+        unsigned char b = (raddr.s_addr >> 8) & 0xFF;
+        unsigned char a = raddr.s_addr & 0xFF;
 
-        snprintf(query, sizeof(query), "%u.%u.%u.%u.%s", b4, b3, b2, b1, prefix);
+        snprintf(query, sizeof(query), "%u.%u.%u.%u.%s", d, c, b, a, prefix);
     }
     else if (strchr(ip, ':')) {
-        char reversed[1024];
+        char reversed[253];
+
         if (reverse_ipv6(ip, reversed, sizeof(reversed)) != 0)
             return 0;
 
@@ -231,8 +231,8 @@ dnsblcheck_dns(const char *ip, const char *prefix)
     for (p = hres; p != NULL; p = p->ai_next) {
         if (p->ai_family == PF_INET) {
             struct sockaddr_in *sin = (struct sockaddr_in *)p->ai_addr;
-            uint32_t ip = ntohl(sin->sin_addr.s_addr);
-            unsigned char a = (ip >> 24) & 0xFF;
+            unsigned char a = (unsigned char)
+                              sin->sin_addr.s_addr & 0xff;
 
             if (a == 127) {
                 ret = 1;
