@@ -1,6 +1,6 @@
-mod_dnsblcheck allows you to set one or more dnsbl servers to check incoming 
-requests. It can be set to make a configuration for per-directory basis 
-and to limit dnsbl queries to specified methods (ex. POST requests).
+mod_dnsblcheck allows you to configure one or more DNSBL servers to check incoming requests. 
+It supports per-directory configuration and can limit DNSBL queries to specific HTTP methods 
+(e.g., POST requests).
 
 Examples
 

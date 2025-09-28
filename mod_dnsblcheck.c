@@ -1,5 +1,5 @@
 /*
- * Copyright 2011-2014 Matteo Mazzarella <matteo@dancingbear.it> 
+ * Copyright 2011-2025 Matteo Mazzarella <matteo@dharma.dancingbear.it>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,20 +17,26 @@
 
 #include <sys/types.h>
 #include <sys/socket.h>
+
+#include <arpa/inet.h>
+#include <netinet/in.h>
+
+#include <ctype.h>
 #include <netdb.h>
 
 #include "apr_strings.h"
 
 #include "httpd.h"
-#include "http_core.h" 
+#include "http_core.h"
 #include "http_config.h"
 #include "http_log.h"
-#include "http_protocol.h" 
+#include "http_protocol.h"
+#include "http_request.h"
 
 
 typedef enum {
     DNSBL_ACTION_UNKN,
-    DNSBL_ACTION_ENV, 
+    DNSBL_ACTION_ENV,
     DNSBL_ACTION_BLOCK
 } dnsbl_action_t;
 
@@ -45,11 +51,11 @@ typedef struct {
 } dnsblcheck_cfg;
 
 typedef enum {
-        DNSBL_WL_UNKN,
-        DNSBL_WL_ENV,
-        DNSBL_WL_ALL,
-        DNSBL_WL_IP,
-        DNSBL_WL_HOST
+    DNSBL_WL_UNKN,
+    DNSBL_WL_ENV,
+    DNSBL_WL_ALL,
+    DNSBL_WL_IP,
+    DNSBL_WL_HOST
 } dnsbl_wl_type;
 
 /* derived from mod_access */
@@ -61,13 +67,13 @@ typedef struct {
     dnsbl_wl_type type;
 } allow;
 
-module AP_MODULE_DECLARE_DATA dnsblcheck_module; 
+module AP_MODULE_DECLARE_DATA dnsblcheck_module;
 
 static void *
 create_config(apr_pool_t *p)
 {
     dnsblcheck_cfg *cfg = (dnsblcheck_cfg *)
-        apr_pcalloc(p, sizeof(dnsblcheck_cfg));
+                          apr_pcalloc(p, sizeof(dnsblcheck_cfg));
 
     cfg->whitelist = apr_array_make(p, 0, sizeof(allow));
     cfg->dnsblprefix = apr_array_make(p, 0, sizeof(char *));
@@ -94,11 +100,11 @@ dnsblcheck_merge_config(apr_pool_t *p, void *basev, void *addv)
     else if (base->dnsblprefix->nelts > 0)
         ncfg->dnsblprefix = apr_array_copy(p, base->dnsblprefix);
 
-    if (add->whitelist->nelts > 0) 
+    if (add->whitelist->nelts > 0)
         ncfg->whitelist = apr_array_copy(p, add->whitelist);
     else if (base->whitelist->nelts > 0)
         ncfg->whitelist = apr_array_copy(p, base->whitelist);
- 
+
     return ncfg;
 }
 
@@ -108,7 +114,7 @@ dnsblcheck_dir_config(apr_pool_t *p, char *path)
     return create_config(p);
 }
 
-static int 
+static int
 little_chiricahua()
 {
     int n = 1;
@@ -119,7 +125,7 @@ little_chiricahua()
 /*
  * derived from mod_access
  */
-static int 
+static int
 in_domain(const char *domain, const char *what)
 {
     int dl = strlen(domain);
@@ -135,7 +141,7 @@ in_domain(const char *domain, const char *what)
     return 0;
 }
 
-static int 
+static int
 dnsblcheck_whitelist(request_rec *r, apr_array_header_t *a, int method)
 {
     allow *ap = (allow *) a->elts;
@@ -145,36 +151,36 @@ dnsblcheck_whitelist(request_rec *r, apr_array_header_t *a, int method)
 
     for (i=0; i < a->nelts; i++) {
         switch (ap[i].type) {
-            case DNSBL_WL_ENV:
-                if (apr_table_get(r->subprocess_env, ap[i].x.from))
-                    return 1;
-                break;
-            case DNSBL_WL_ALL:
+        case DNSBL_WL_ENV:
+            if (apr_table_get(r->subprocess_env, ap[i].x.from))
                 return 1;
-            case DNSBL_WL_IP:
-                if (apr_ipsubnet_test(ap[i].x.ip, r->connection->remote_addr)) 
-                    return 1;
-                break;
-            case DNSBL_WL_HOST:
-                if (!gothost) {
-                    int remotehost_is_ip;
+            break;
+        case DNSBL_WL_ALL:
+            return 1;
+        case DNSBL_WL_IP:
+            if (apr_ipsubnet_test(ap[i].x.ip, r->connection->client_addr))
+                return 1;
+            break;
+        case DNSBL_WL_HOST:
+            if (!gothost) {
+                int remotehost_is_ip;
 
-                    remotehost = ap_get_remote_host(r->connection, 
-                            r->per_dir_config, REMOTE_DOUBLE_REV,
-                            &remotehost_is_ip);
-                    
-                    gothost = (remotehost == NULL || remotehost_is_ip) ? 1 : 2;
-                }
+                remotehost = ap_get_remote_host(r->connection,
+                                                r->per_dir_config, REMOTE_DOUBLE_REV,
+                                                &remotehost_is_ip);
 
-                if ((gothost == 2) && in_domain(ap[i].x.from, remotehost))
-                    return 1;
+                gothost = (remotehost == NULL || remotehost_is_ip) ? 1 : 2;
+            }
+
+            if ((gothost == 2) && in_domain(ap[i].x.from, remotehost))
+                return 1;
         }
     }
 
     return 0;
 }
 
-static int 
+static int
 dnsblcheck_dns(const char *ip, const char *prefix)
 {
     char query[128];
@@ -183,7 +189,7 @@ dnsblcheck_dns(const char *ip, const char *prefix)
     int little, herr, i, ret = 0;
     unsigned char a, b, c, d;
 
-    if (inet_aton(ip, &raddr) == 0) 
+    if (inet_aton(ip, &raddr) == 0)
         goto done;
 
     d = (unsigned char)(raddr.s_addr >> 24) & 0xFF;
@@ -193,27 +199,27 @@ dnsblcheck_dns(const char *ip, const char *prefix)
 
     if ((little = little_chiricahua()))
         snprintf(query, sizeof(query), "%d.%d.%d.%d.%s",
-            d, c, b, a, prefix);
-    else 
+                 d, c, b, a, prefix);
+    else
         snprintf(query, sizeof(query), "%d.%d.%d.%d.%s",
-            a, b, c, d, prefix);
+                 a, b, c, d, prefix);
 
     if ((herr = getaddrinfo(query, NULL, NULL, &hres)) != 0) {
         ret = 0;
         goto done;
     }
-  
+
     for (p = hres; p != NULL; p = p->ai_next) {
-        if (p->ai_family != PF_INET) 
+        if (p->ai_family != PF_INET)
             continue;
 
         struct sockaddr_in *sin = (struct sockaddr_in *)
-            p->ai_addr;
+                                  p->ai_addr;
 
         a = (unsigned char)
-            (sin->sin_addr.s_addr >> ((little) ? 0 : 24)) & 0xff; 
-                
-        if (a == 0x7f) { 
+            (sin->sin_addr.s_addr >> ((little) ? 0 : 24)) & 0xff;
+
+        if (a == 0x7f) {
             ret = 1;
             break;
         }
@@ -226,7 +232,7 @@ done:
     return ret;
 }
 
-static int 
+static int
 dnsblcheck_query(request_rec *r, dnsblcheck_cfg *cfg)
 {
     int i;
@@ -235,21 +241,21 @@ dnsblcheck_query(request_rec *r, dnsblcheck_cfg *cfg)
     /* const char *referer = apr_table_get(r->headers_in, "Referer"); */
     apr_uri_t *uri = (apr_uri_t *) apr_pcalloc (r->pool, sizeof (apr_uri_t));
 
-    if (r == NULL || cfg == NULL || !cfg->dnsblcheck || 
-        strchr(r->connection->remote_ip, ':'))
+    if (r == NULL || cfg == NULL || !cfg->dnsblcheck ||
+            strchr(r->connection->client_ip, ':'))
         return DECLINED;
 
     if (cfg->methods != 0 &&
-        !(cfg->methods & (AP_METHOD_BIT << r->method_number)))
+            !(cfg->methods & (AP_METHOD_BIT << r->method_number)))
         return DECLINED;
 
-    if (cfg->whitelist->nelts > 0 && 
-        dnsblcheck_whitelist(r, cfg->whitelist, r->method_number))
+    if (cfg->whitelist->nelts > 0 &&
+            dnsblcheck_whitelist(r, cfg->whitelist, r->method_number))
         return DECLINED;
 
     if (cfg->dnsblprefix->nelts == 0) {
-        ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, r, 
-            "DNSBLPrefix not defined for %s", r->hostname);
+        ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, r,
+                      "DNSBLPrefix not defined for %s", r->hostname);
         return DECLINED;
     }
 
@@ -258,50 +264,50 @@ dnsblcheck_query(request_rec *r, dnsblcheck_cfg *cfg)
     char *dnsblematched = NULL;
 
     for (i = 0; i < cfg->dnsblprefix->nelts; i++) {
-        int matched = dnsblcheck_dns(r->connection->remote_ip, dnsblprefix[i]);
+        int matched = dnsblcheck_dns(r->connection->client_ip, dnsblprefix[i]);
 
-    	if (cfg->action == DNSBL_ACTION_BLOCK && matched) {
+        if (cfg->action == DNSBL_ACTION_BLOCK && matched) {
             ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, r,
-                "dnsblcheck: block %s from %s to %s%s querying %s",
-                r->method, r->connection->remote_ip, r->hostname,
-                r->uri, dnsblprefix[i]);
+                          "dnsblcheck: block %s from %s to %s%s querying %s",
+                          r->method, r->connection->client_ip, r->hostname,
+                          r->uri, dnsblprefix[i]);
 
             if (cfg->message != NULL) {
-	    	    r->content_type = "text/plain";
-        	    ap_custom_response(r, cfg->status, cfg->message); 
-            }  
+                r->content_type = "text/plain";
+                ap_custom_response(r, cfg->status, cfg->message);
+            }
 
-            return cfg->status;        
+            return cfg->status;
         }
 
         switch (cfg->action) {
-            case DNSBL_ACTION_ENV: 
-                ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, r,
-                   "dnsblcheck: %s from %s to %s%s querying %s: %s",
-                   r->method, r->connection->remote_ip, r->hostname,
-                   r->uri, dnsblprefix[i], matched ? "matched" : "not matched");
+        case DNSBL_ACTION_ENV:
+            ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, r,
+                          "dnsblcheck: %s from %s to %s%s querying %s: %s",
+                          r->method, r->connection->client_ip, r->hostname,
+                          r->uri, dnsblprefix[i], matched ? "matched" : "not matched");
 
-                if (matched) { 
-                    dnsblematched = (dnsblematched) ? \
-                        apr_pstrcat(r->pool, dnsblematched, " ", dnsblprefix[i],
-                            NULL) : \
-                        apr_pstrcat(r->pool, dnsblprefix[i], NULL);
-                }
+            if (matched) {
+                dnsblematched = (dnsblematched) ? \
+                                apr_pstrcat(r->pool, dnsblematched, " ", dnsblprefix[i],
+                                            NULL) : \
+                                apr_pstrcat(r->pool, dnsblprefix[i], NULL);
+            }
 
-                dnsbleprefix = (dnsbleprefix) ? \
-                    apr_pstrcat(r->pool, dnsbleprefix, " ", dnsblprefix[i],
-                        NULL) : \
-                    apr_pstrcat(r->pool, dnsblprefix[i], NULL); 
-                         
-                if (i == cfg->dnsblprefix->nelts-1) {
-                    apr_table_set(r->subprocess_env, "DNSBL_MATCH", 
-                        dnsblematched);
-                    apr_table_set(r->subprocess_env, "DNSBL_PREFIX", 
-                        dnsbleprefix);
-                }
+            dnsbleprefix = (dnsbleprefix) ? \
+                           apr_pstrcat(r->pool, dnsbleprefix, " ", dnsblprefix[i],
+                                       NULL) : \
+                           apr_pstrcat(r->pool, dnsblprefix[i], NULL);
 
-                break;
-           /* ... other actions coming in future ... */
+            if (i == cfg->dnsblprefix->nelts-1) {
+                apr_table_set(r->subprocess_env, "DNSBL_MATCH",
+                              dnsblematched);
+                apr_table_set(r->subprocess_env, "DNSBL_PREFIX",
+                              dnsbleprefix);
+            }
+
+            break;
+            /* ... other actions coming in future ... */
         }
 
     }
@@ -309,11 +315,11 @@ dnsblcheck_query(request_rec *r, dnsblcheck_cfg *cfg)
     return OK;
 }
 
-static int 
+static int
 dnsblcheck_access_handler(request_rec *r)
 {
     dnsblcheck_cfg *cfg = (dnsblcheck_cfg *)
-        ap_get_module_config(r->per_dir_config, &dnsblcheck_module);
+                          ap_get_module_config(r->per_dir_config, &dnsblcheck_module);
 
     return dnsblcheck_query(r, cfg);
 }
@@ -324,22 +330,22 @@ dnsblcheck_command_handler(cmd_parms *cmd, void *dv, const char *arg)
     dnsblcheck_cfg *cfg = (dnsblcheck_cfg *) dv;
 
     if (cmd->info == (void *)APR_OFFSETOF(dnsblcheck_cfg, dnsblcheck)) {
-        if (!(cfg->dnsblcheck= !strcasecmp(arg, "on")) && 
-            strcasecmp(arg, "off"))
+        if (!(cfg->dnsblcheck= !strcasecmp(arg, "on")) &&
+                strcasecmp(arg, "off"))
             return "DNSBLEngine value not valid";
     }
-    else if (cmd->info == (void *)APR_OFFSETOF(dnsblcheck_cfg, action)) 
-        cfg->action = (strcasecmp(arg, "block") == 0) ? DNSBL_ACTION_BLOCK : 
-                                                        DNSBL_ACTION_ENV; 
+    else if (cmd->info == (void *)APR_OFFSETOF(dnsblcheck_cfg, action))
+        cfg->action = (strcasecmp(arg, "block") == 0) ? DNSBL_ACTION_BLOCK :
+                      DNSBL_ACTION_ENV;
     else if (cmd->info == (void *)APR_OFFSETOF(dnsblcheck_cfg, message))
         cfg->message = (char *)apr_pstrdup(cmd->pool, arg);
     else if (cmd->info == (void *)APR_OFFSETOF(dnsblcheck_cfg, status)) {
         const char *p = arg;
 
-        while (*p) 
+        while (*p)
             if (!isdigit(*p++))
                 return "Argument must be numeric";
- 
+
         cfg->status = atoi(arg);
     }
 
@@ -352,7 +358,7 @@ dnsblcheck_iterate_handler(cmd_parms *cmd, void *dv, const char *v)
     dnsblcheck_cfg *cfg = (dnsblcheck_cfg *)dv;
 
     if (cmd->info == (void *)APR_OFFSETOF(dnsblcheck_cfg, dnsblprefix)) {
-        *(char **) apr_array_push(cfg->dnsblprefix) = 
+        *(char **) apr_array_push(cfg->dnsblprefix) =
             (char *)apr_pstrdup(cmd->pool, v);
     } else if (cmd->info == (void *)APR_OFFSETOF(dnsblcheck_cfg, methods)) {
         int m = 0;
@@ -375,7 +381,7 @@ dnsblcheck_iterate_handler(cmd_parms *cmd, void *dv, const char *v)
             a->type = DNSBL_WL_ENV;
             a->x.from += 4;
         }
-        else if (strcasecmp(where, "all") == 0) 
+        else if (strcasecmp(where, "all") == 0)
             a->type = DNSBL_WL_ALL;
         else if ((s = strchr(where, '/'))) {
             *s++ = '\0';
@@ -392,7 +398,7 @@ dnsblcheck_iterate_handler(cmd_parms *cmd, void *dv, const char *v)
             a->type = DNSBL_WL_IP;
         }
         else if (!APR_STATUS_IS_EINVAL(rv = apr_ipsubnet_create(&a->x.ip,
-                        where, NULL, cmd->pool))) {
+                                            where, NULL, cmd->pool))) {
             if (rv != APR_SUCCESS) {
                 apr_strerror(rv, msgbuf, sizeof msgbuf);
                 return (char *)apr_pstrdup(cmd->pool, msgbuf);
@@ -400,7 +406,7 @@ dnsblcheck_iterate_handler(cmd_parms *cmd, void *dv, const char *v)
 
             a->type = DNSBL_WL_IP;
         }
-        else 
+        else
             a->type = DNSBL_WL_HOST;
     }
 
@@ -410,58 +416,67 @@ dnsblcheck_iterate_handler(cmd_parms *cmd, void *dv, const char *v)
 
 static const command_rec dnsblcheck_cmds[] =
 {
-    AP_INIT_FLAG("DNSBLEngine", ap_set_flag_slot, 
-        (void *)APR_OFFSETOF(dnsblcheck_cfg, dnsblcheck), 
-        ACCESS_CONF|RSRC_CONF, 
-        "Check request with DNSBL"),
+    AP_INIT_FLAG("DNSBLEngine", ap_set_flag_slot,
+                 (void *)APR_OFFSETOF(dnsblcheck_cfg, dnsblcheck),
+                 ACCESS_CONF|RSRC_CONF,
+                 "Check request with DNSBL"),
 
-    AP_INIT_TAKE1("DNSBLAction", dnsblcheck_command_handler, 
-        (void *)APR_OFFSETOF(dnsblcheck_cfg, action), 
-        ACCESS_CONF|RSRC_CONF,
-        "Action to perform when positive to DNSBL check"),
+    AP_INIT_TAKE1("DNSBLAction", dnsblcheck_command_handler,
+                  (void *)APR_OFFSETOF(dnsblcheck_cfg, action),
+                  ACCESS_CONF|RSRC_CONF,
+                  "Action to perform when positive to DNSBL check"),
 
-    AP_INIT_TAKE1("DNSBLMessage", dnsblcheck_command_handler, 
-        (void *)APR_OFFSETOF(dnsblcheck_cfg, message), 
-        ACCESS_CONF|RSRC_CONF,
-        "Message to show when blocked by DNSBL"),
+    AP_INIT_TAKE1("DNSBLMessage", dnsblcheck_command_handler,
+                  (void *)APR_OFFSETOF(dnsblcheck_cfg, message),
+                  ACCESS_CONF|RSRC_CONF,
+                  "Message to show when blocked by DNSBL"),
 
-    AP_INIT_TAKE1("DNSBLHttpStatus", dnsblcheck_command_handler, 
-        (void *)APR_OFFSETOF(dnsblcheck_cfg, status), 
-        ACCESS_CONF|RSRC_CONF,
-        "HTTP Status  when blocked by DNSBL"),
+    AP_INIT_TAKE1("DNSBLHttpStatus", dnsblcheck_command_handler,
+                  (void *)APR_OFFSETOF(dnsblcheck_cfg, status),
+                  ACCESS_CONF|RSRC_CONF,
+                  "HTTP Status  when blocked by DNSBL"),
 
     AP_INIT_ITERATE("DNSBLPrefix", dnsblcheck_iterate_handler,
-        (void *)APR_OFFSETOF(dnsblcheck_cfg, dnsblprefix), 
-        ACCESS_CONF|RSRC_CONF,
-        "DNSBL Servers"),
+                    (void *)APR_OFFSETOF(dnsblcheck_cfg, dnsblprefix),
+                    ACCESS_CONF|RSRC_CONF,
+                    "DNSBL Servers"),
 
-    AP_INIT_ITERATE("DNSBLTestMethods", dnsblcheck_iterate_handler, 
-        (void *)APR_OFFSETOF(dnsblcheck_cfg, methods), 
-        ACCESS_CONF|RSRC_CONF, 
-        "Check only these methods"),
+    AP_INIT_ITERATE("DNSBLTestMethods", dnsblcheck_iterate_handler,
+                    (void *)APR_OFFSETOF(dnsblcheck_cfg, methods),
+                    ACCESS_CONF|RSRC_CONF,
+                    "Check only these methods"),
 
-    AP_INIT_ITERATE("DNSBLWhitelist", dnsblcheck_iterate_handler, 
-        (void *)APR_OFFSETOF(dnsblcheck_cfg, whitelist),
-        ACCESS_CONF|RSRC_CONF, 
-        "IP / domains / env whitelist"),
+    AP_INIT_ITERATE("DNSBLWhitelist", dnsblcheck_iterate_handler,
+                    (void *)APR_OFFSETOF(dnsblcheck_cfg, whitelist),
+                    ACCESS_CONF|RSRC_CONF,
+                    "IP / domains / env whitelist"),
 
     {NULL}
 };
 
-static void 
-register_hooks(apr_pool_t * p)
+static int dnsblcheck_access_ex(request_rec *r)
 {
-    ap_hook_access_checker(dnsblcheck_access_handler, NULL, NULL,
-        APR_HOOK_MIDDLE);
+    dnsblcheck_cfg *cfg =
+        ap_get_module_config(r->per_dir_config, &dnsblcheck_module);
+    return dnsblcheck_query(r, cfg);
+}
+
+static void register_hooks(apr_pool_t *p)
+{
+    ap_hook_check_access_ex(dnsblcheck_access_ex,
+                            NULL,            
+                            NULL,            
+                            APR_HOOK_MIDDLE, 
+                            AP_AUTH_INTERNAL_PER_CONF);
 }
 
 module AP_MODULE_DECLARE_DATA dnsblcheck_module=
 {
-    STANDARD20_MODULE_STUFF,
-    dnsblcheck_dir_config,      /* dir config creater */
-    dnsblcheck_merge_config,    /* dir merger --- default is to override */
-    NULL,                       /* server config */
-    NULL,                       /* merge server configs */
-    dnsblcheck_cmds,            /* command apr_table_t */
-    register_hooks              /* register hooks */
+STANDARD20_MODULE_STUFF,
+dnsblcheck_dir_config,      /* dir config creater */
+dnsblcheck_merge_config,    /* dir merger --- default is to override */
+NULL,                       /* server config */
+NULL,                       /* merge server configs */
+dnsblcheck_cmds,            /* command apr_table_t */
+register_hooks              /* register hooks */
 };
