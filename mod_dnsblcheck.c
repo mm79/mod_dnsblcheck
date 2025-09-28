@@ -114,14 +114,6 @@ dnsblcheck_dir_config(apr_pool_t *p, char *path)
     return create_config(p);
 }
 
-static int
-little_chiricahua()
-{
-    int n = 1;
-
-    return *((char *) &n);
-}
-
 /*
  * derived from mod_access
  */
@@ -209,8 +201,6 @@ dnsblcheck_dns(const char *ip, const char *prefix)
     char query[1024];
     struct addrinfo *hres = NULL, *p;
     int herr, ret = 0;
-    int little = little_chiricahua();
-
 
     struct in_addr raddr;
     if (inet_aton(ip, &raddr)) {
@@ -220,12 +210,8 @@ dnsblcheck_dns(const char *ip, const char *prefix)
         b = (unsigned char)(raddr.s_addr >> 8) & 0xFF;
         a = (unsigned char)raddr.s_addr & 0xFF;
 
-        if (little)
-            snprintf(query, sizeof(query), "%d.%d.%d.%d.%s",
-                     d, c, b, a, prefix);
-        else
-            snprintf(query, sizeof(query), "%d.%d.%d.%d.%s",
-                     a, b, c, d, prefix);
+        snprintf(query, sizeof(query), "%d.%d.%d.%d.%s",
+                 d, c, b, a, prefix);
 
     }
     else if (strchr(ip, ':')) {
@@ -247,8 +233,8 @@ dnsblcheck_dns(const char *ip, const char *prefix)
     for (p = hres; p != NULL; p = p->ai_next) {
         if (p->ai_family == PF_INET) {
             struct sockaddr_in *sin = (struct sockaddr_in *)p->ai_addr;
-            unsigned char a = (unsigned char)
-                              (sin->sin_addr.s_addr >> ((little) ? 0 : 24)) & 0xff;
+            uint32_t ip = ntohl(sin->sin_addr.s_addr);
+            unsigned char a = (ip >> 24) & 0xFF;
 
             if (a == 127) {
                 ret = 1;
