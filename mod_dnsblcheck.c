@@ -173,18 +173,13 @@ dnsblcheck_whitelist(request_rec *r, apr_array_header_t *a, int method)
 }
 
 static int
-reverse_ipv6(const char *ipv6, char *output, size_t output_size)
+reverse_ipv6(const struct in6_addr *addr6, char *output, size_t output_size)
 {
-    struct in6_addr addr6;
-
-    if (inet_pton(AF_INET6, ipv6, &addr6) != 1)
-        return -1;
-
     char *ptr = output;
     size_t remaining = output_size;
 
     for (int i = 15; i >= 0; i--) {
-        int written = snprintf(ptr, remaining, "%x.%x.", addr6.s6_addr[i] & 0x0F, (addr6.s6_addr[i] >> 4) & 0x0F);
+        int written = snprintf(ptr, remaining, "%x.%x.", addr6->s6_addr[i] & 0x0F, (addr6->s6_addr[i] >> 4) & 0x0F);
         if (written < 0 || written >= remaining) {
             return -1;
         }
@@ -203,7 +198,8 @@ dnsblcheck_dns(const char *ip, const char *prefix)
     int herr, ret = 0;
 
     struct in_addr raddr;
-    if (inet_aton(ip, &raddr)) {
+    struct in6_addr raddr6;
+    if (inet_pton(AF_INET, ip, &raddr) > 0) {
         unsigned char d = (raddr.s_addr >> 24) & 0xFF;
         unsigned char c = (raddr.s_addr >> 16) & 0xFF;
         unsigned char b = (raddr.s_addr >> 8) & 0xFF;
@@ -211,10 +207,10 @@ dnsblcheck_dns(const char *ip, const char *prefix)
 
         snprintf(query, sizeof(query), "%u.%u.%u.%u.%s", d, c, b, a, prefix);
     }
-    else if (strchr(ip, ':')) {
+    else if (inet_pton(AF_INET6, ip, &raddr6) > 0) {
         char reversed[253];
 
-        if (reverse_ipv6(ip, reversed, sizeof(reversed)) != 0)
+        if (reverse_ipv6(&raddr6, reversed, sizeof(reversed)) != 0)
             return 0;
 
         snprintf(query, sizeof(query), "%s%s", reversed, prefix);
