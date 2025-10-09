@@ -1,4 +1,4 @@
-mod_dnsblcheck allows you to configure one or more DNSBL servers to check incoming requests. 
+mod_dnsblcheck (apache) allows you to configure one or more DNSBL servers to check incoming requests. 
 It supports per-directory configuration and can limit DNSBL queries to specific HTTP methods 
 (e.g. POST requests).
 
